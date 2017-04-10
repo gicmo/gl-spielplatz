@@ -139,9 +139,13 @@ main(int argc, char **argv) {
     return -1;
   }
 
+  //this is the texture width and height
+  int texture_size = 1000;
+
   gboolean use_mapping = false;
   GOptionEntry entries[] = {
     { "map", 'm', 0, G_OPTION_ARG_NONE, &use_mapping, "Try to map cpu/gpu memory for textures" },
+    { "tex-size", 'S', 0, G_OPTION_ARG_INT, &texture_size, "Texture size [px] (default: 1000)" },
     { NULL }
   };
 
@@ -259,7 +263,7 @@ main(int argc, char **argv) {
 
   check_gl_error("texture setup", false);
 
-  int w = 1000, h = 1000;
+  int h = texture_size, w = texture_size;
   unsigned char *buffer = NULL;
   int stride = -1;
   if (use_mapping) {
