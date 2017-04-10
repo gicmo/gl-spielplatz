@@ -7,6 +7,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <glib.h>
 #include <cairo.h>
 
 #include <time.h>
@@ -133,7 +134,21 @@ main(int argc, char **argv) {
     return -1;
   }
 
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+  gboolean use_mapping = false;
+  GOptionEntry entries[] = {
+    { "map", 'm', 0, G_OPTION_ARG_NONE, &use_mapping, "Try to map cpu/gpu memory for textures" },
+    { NULL }
+  };
+
+  GOptionContext *context = g_option_context_new(NULL);
+  g_option_context_add_main_entries(context, entries, NULL);
+  GError *error = NULL;
+  if (!g_option_context_parse(context, &argc, &argv, &error)) {
+    fprintf(stderr, "option parsing failed: %s", error->message);
+    return -1;
+  }
+
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
   glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
@@ -156,8 +171,11 @@ main(int argc, char **argv) {
   }
 
   fprintf(stdout, "[I] Using GLEW %s\n", glewGetString(GLEW_VERSION));
-
   check_gl_error("glew init", true);
+
+  if (use_mapping && !glewIsSupported("GL_INTEL_map_texture")) {
+    fprintf(stderr, "[W] GL_INTEL_map_texture seems unsupported.");
+  }
 
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -225,6 +243,7 @@ main(int argc, char **argv) {
   check_gl_error("vertex done", false);
 
   // textures
+  glActiveTexture(GL_TEXTURE0);
   GLuint texture;
   glGenTextures(1, &texture);
   glBindTexture(GL_TEXTURE_2D, texture);
@@ -233,10 +252,40 @@ main(int argc, char **argv) {
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
+  check_gl_error("texture setup", false);
 
   int w = 1000, h = 1000;
-  int stride = cairo_format_stride_for_width (CAIRO_FORMAT_ARGB32, w);
-  unsigned char buffer[h * stride] = {0, };
+  unsigned char *buffer = NULL;
+  int stride = -1;
+  if (use_mapping) {
+    GLenum layout;
+    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MEMORY_LAYOUT_INTEL, GL_LAYOUT_LINEAR_INTEL);
+    glTexImage2D(GL_TEXTURE_2D, //target
+                 0, //level
+                 GL_RGBA8, // internal format, must be sized
+                 w, h, // width x height
+                 0, // border, must be zero
+                 GL_RGBA, // format
+                 GL_UNSIGNED_BYTE, // type
+                 NULL); //buffer
+
+    buffer = (unsigned char *) glMapTexture2DINTEL(texture, 0, GL_MAP_WRITE_BIT,
+                                                   &stride, &layout);
+
+    check_gl_error("mapping texture mapping", false);
+    if (buffer == NULL) {
+      fprintf(stderr, "[E] could not map texture. Sad :(\n");
+      return -1;
+    } else {
+      if (stride == -1) {
+        fprintf(stderr, "[C] stride output is -1, this it not going to end well...\n");
+      }
+      fprintf(stderr, "[D] layout is %d, stride is %d\n", layout, stride);
+    }
+  } else {
+    stride = cairo_format_stride_for_width (CAIRO_FORMAT_ARGB32, w);
+    buffer = (unsigned char *) g_malloc(h * stride);
+  }
 
   cairo_surface_t *surface =
     cairo_image_surface_create_for_data (buffer,
@@ -272,7 +321,11 @@ main(int argc, char **argv) {
     cairo_destroy(cr);
     cairo_surface_flush(surface);
 
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
+    if (use_mapping) {
+      glSyncTextureINTEL(texture);
+    } else {
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
+    }
 
     float data[4] = {1.0f, 0.5f, 0.7f, 1.0f};
 
@@ -298,6 +351,12 @@ main(int argc, char **argv) {
   }
 
   cairo_surface_destroy (surface);
+
+  if (use_mapping) {
+    glUnmapTexture2DINTEL(texture, 0);
+  } else {
+    g_free(buffer);
+  }
 
   glfwTerminate();
   return 0;

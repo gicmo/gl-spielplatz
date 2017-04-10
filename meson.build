@@ -5,6 +5,7 @@ compiler = meson.get_compiler('cpp')
 glfw  = dependency('glfw3')
 glew  = dependency('glew')
 gl    = dependency('gl')
+glib  = dependency('glib-2.0')
 cairo = dependency('cairo')
 
 cpp_flags = ['-std=c++11', '-Wall']
@@ -18,4 +19,5 @@ executable('spielpatz',
 	     glfw,
 	     glew,
 	     gl,
+	     glib,
 	     cairo])
