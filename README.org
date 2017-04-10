@@ -1,0 +1,7 @@
+
+** Building
+*** Packages needed
+#+BEGIN_SRC sh
+dnf install meson cairo-devel glib2-devel glfw-devel glew-devel glm-devel
+#+END_SRC
+
