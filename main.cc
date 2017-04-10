@@ -25,10 +25,10 @@ in vec4 coord;
 out vec2 texpos;
 
 uniform sampler2D tex;
-//uniform mat4 vp;
+uniform mat4 vp;
 
 void main(void) {
-  gl_Position = vec4(coord.xy, 0, 1);
+  gl_Position =  vp * vec4(coord.xy, 0, 1);
   texpos.s =     (0.5 + coord.x);
   texpos.t = 1 - (0.5 + coord.y);
 }
@@ -100,10 +100,15 @@ draw_clock (cairo_t *cr)
   cairo_stroke(cr);
 }
 
+static float win_width  = 600;
+static float win_height = 600;
 
 static void
 fb_size_gl_cb(GLFWwindow *gl_win, int width, int height)
 {
+  win_width = width;
+  win_height = height;
+
   glViewport(0, 0, width, height);
 }
 
@@ -155,7 +160,7 @@ main(int argc, char **argv) {
 
   check_gl_error("Profile", true);
 
-  GLFWwindow *wnd = glfwCreateWindow(600, 600, "Test", NULL, NULL);
+  GLFWwindow *wnd = glfwCreateWindow(win_width, win_height, "Test", NULL, NULL);
 
   if (wnd == NULL) {
     return -1;
@@ -300,14 +305,13 @@ main(int argc, char **argv) {
   setbuf(stdout, NULL);
   glfwSwapInterval(0);
   while (glfwWindowShouldClose(wnd) == 0) {
-    //glm::mat4 vp;
 
     double now = glfwGetTime();
     n_frames++;
     double elapsed = now - tick;
     if (elapsed >= 1.0) {
 
-      printf("\r%f ms/frame [%f fps]",
+      printf("\r%f ms/frame [%f fps] ",
              elapsed * 1000.0/double(n_frames),
              n_frames/elapsed);
       n_frames = 0;
@@ -321,10 +325,17 @@ main(int argc, char **argv) {
     cairo_destroy(cr);
     cairo_surface_flush(surface);
 
+    double before = glfwGetTime();
     if (use_mapping) {
       glSyncTextureINTEL(texture);
     } else {
       glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
+    }
+    double after = glfwGetTime();
+    double upload = after - before;
+    
+    if (elapsed >= 1.0) {
+      printf(" upload %f ms", upload * 1000);
     }
 
     float data[4] = {1.0f, 0.5f, 0.7f, 1.0f};
@@ -336,7 +347,17 @@ main(int argc, char **argv) {
 
     //glUniform4fv(glGetUniformLocation(prg, "plot_color"), 1, data);
     glUniform1i(glGetUniformLocation(prg, "tex"), 0);
-    //glUniformMatrix4fv(glGetUniformLocation(prg, "vp"), 1, GL_FALSE, glm::value_ptr(vp));
+
+    glm::mat4 vp;
+    if (win_height > win_width) {
+      float scale = win_width / win_height;
+      vp = glm::scale(glm::mat4(1), glm::vec3(1.0f, scale, 1.0f));
+    } else {
+      float scale = win_height / win_width;
+      vp = glm::scale(glm::mat4(1), glm::vec3(scale, 1.0f, 1.0f));
+    }
+
+    glUniformMatrix4fv(glGetUniformLocation(prg, "vp"), 1, GL_FALSE, glm::value_ptr(vp));
 
     glBindVertexArray(vb);
     glDrawArrays(GL_TRIANGLES, 0, 6);
