@@ -11,6 +11,7 @@
 
 #include <time.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -105,10 +106,28 @@ fb_size_gl_cb(GLFWwindow *gl_win, int width, int height)
   glViewport(0, 0, width, height);
 }
 
+static gboolean gl_errors_are_fatal = FALSE;
+
+static gboolean
+check_gl_error(const char *task, gboolean ignore_fatal)
+{
+  GLenum err;
+  gboolean have_error = false;
+
+  while ((err = glGetError()) != GL_NO_ERROR) {
+    printf("%s: GL error: %d \n", task, err);
+    have_error = true;
+  }
+
+  if (!ignore_fatal && have_error && gl_errors_are_fatal) {
+    exit(1);
+  }
+
+  return have_error;
+}
+
 int
 main(int argc, char **argv) {
-
-  GLenum err;
 
   if (!glfwInit()) {
     return -1;
@@ -119,11 +138,7 @@ main(int argc, char **argv) {
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
   glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 
-  err = glGetError();
-  if (err != GL_NO_ERROR) {
-    printf("Profile Error...%d \n", err);
-    return -2;
-  }
+  check_gl_error("Profile", true);
 
   GLFWwindow *wnd = glfwCreateWindow(600, 600, "Test", NULL, NULL);
 
@@ -133,15 +148,23 @@ main(int argc, char **argv) {
 
   glfwMakeContextCurrent(wnd);
 
+  check_gl_error("window creation", false);
+
   glewExperimental = GL_TRUE;
   if(glewInit() != GLEW_OK) {
     return -1;
   }
 
+  fprintf(stdout, "[I] Using GLEW %s\n", glewGetString(GLEW_VERSION));
+
+  check_gl_error("glew init", true);
+
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
   glEnable(GL_MULTISAMPLE);
+
+  check_gl_error("setup done", false);
 
   GLuint vs = glCreateShader(GL_VERTEX_SHADER);
   glShaderSource(vs, 1, vs_simple, NULL);
@@ -199,6 +222,8 @@ main(int argc, char **argv) {
 
   glBindVertexArray(0);
 
+  check_gl_error("vertex done", false);
+
   // textures
   GLuint texture;
   glGenTextures(1, &texture);
@@ -219,10 +244,6 @@ main(int argc, char **argv) {
                                          w,
                                          h,
                                          stride);
-
-  if (err != GL_NO_ERROR) {
-    printf("Error...%d\n", err);
-  }
 
   double tick = glfwGetTime();
   int n_frames = 0;
@@ -273,10 +294,7 @@ main(int argc, char **argv) {
     glfwSwapBuffers(wnd);
     glfwPollEvents();
 
-    err = glGetError();
-    if (err != GL_NO_ERROR) {
-      printf("Error...%d\n", err);
-    }
+    check_gl_error("loop done", false);
   }
 
   cairo_surface_destroy (surface);
